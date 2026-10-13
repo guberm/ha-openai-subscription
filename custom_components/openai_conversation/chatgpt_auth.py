@@ -31,6 +31,7 @@ from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from .httpx_compat import create_auth_flow
 from .const import (
     AUTH_METHOD_CHATGPT,
     CONF_AUTH_METHOD,
@@ -665,9 +666,13 @@ class ChatGPTSubscriptionClient(openai.AsyncOpenAI):
 
     @property
     @override
-    def custom_auth(self) -> httpx2.Auth | None:
-        """Return the token refreshing auth flow."""
-        return ChatGPTSubscriptionAuth(self.auth)
+    def custom_auth(self) -> Any:
+        """Return the token refreshing auth flow for the httpx in use.
+
+        This deployment runs on Home Assistant releases that still hand out an
+        `httpx.AsyncClient`; `create_auth_flow` picks the matching base class.
+        """
+        return create_auth_flow(self._client, self.auth)
 
 
 def subscription_error_message(err: openai.OpenAIError) -> str | None:
