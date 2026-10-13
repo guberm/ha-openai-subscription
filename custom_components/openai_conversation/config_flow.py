@@ -28,6 +28,7 @@ from homeassistant.const import (
     EntityStateAttribute,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import AbortFlow
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import llm
 from homeassistant.helpers.httpx_client import get_async_client
@@ -221,10 +222,23 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_catalog_default(
         self, credentials: ChatGPTCredentials
     ) -> str | None:
-        """Return the first model of the signed in account's catalog, if any."""
-        models = await async_get_subscription_models_for_credentials(
-            self.hass, credentials
-        )
+        """Return the first model of the signed in account's catalog, if any.
+
+        The catalog is only used to preselect a model. Reading it can fail
+        (OpenAI returned a transient 520 while this was written), and that must
+        not fail the sign in: the default model is used instead.
+        """
+        try:
+            models = await async_get_subscription_models_for_credentials(
+                self.hass, credentials
+            )
+        except HomeAssistantError as err:
+            _LOGGER.warning(
+                "Could not read the OpenAI model catalog, using the default "
+                "model instead: %s",
+                err,
+            )
+            return None
         return models[0] if models else None
 
     @callback
@@ -371,7 +385,16 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._siwc_entry()
 
         if user_input is not None:
-            return await self._async_step_chatgpt_callback(user_input, entry)
+            try:
+                return await self._async_step_chatgpt_callback(user_input, entry)
+            except AbortFlow:
+                # The flow aborts on purpose (an entry already exists, ...).
+                raise
+            except Exception:
+                # A user must never be left with a bare "unknown error": log
+                # what happened and ask them to start the sign in again.
+                _LOGGER.exception("Unexpected error during the ChatGPT sign in")
+                return self._show_chatgpt_form({"base": "unexpected_error"})
 
         self._siwc_request = create_authorization_request(
             # A saved client id re-authorizes a known registration; a retained
@@ -702,10 +725,15 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
 
         catalog_models: list[str] = []
         if subscription:
-            catalog_models = await async_get_subscription_models(
-                self.hass,
-                ChatGPTAuth.from_entry(self.hass, self._get_entry()),
-            )
+            try:
+                catalog_models = await async_get_subscription_models(
+                    self.hass,
+                    ChatGPTAuth.from_entry(self.hass, self._get_entry()),
+                )
+            except HomeAssistantError as err:
+                # The selector then allows any value to be typed, which is
+                # better than refusing to open the options at all.
+                _LOGGER.warning("Could not read the OpenAI model catalog: %s", err)
             step_schema: VolDictType = {
                 probatio.Optional(
                     CONF_CHAT_MODEL,

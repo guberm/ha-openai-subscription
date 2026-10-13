@@ -31,7 +31,7 @@ from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .httpx_compat import create_auth_flow
+from .httpx_compat import HTTP_ERRORS, create_auth_flow
 from .const import (
     AUTH_METHOD_CHATGPT,
     CONF_AUTH_METHOD,
@@ -367,7 +367,7 @@ async def async_token_request(
     client = get_async_client(hass)
     try:
         response = await client.post(TOKEN_URL, data=data, timeout=HTTP_TIMEOUT)
-    except httpx2.HTTPError as err:
+    except HTTP_ERRORS as err:
         raise HomeAssistantError(f"Error talking to OpenAI: {err}") from err
 
     if response.status_code == 200:
@@ -402,7 +402,7 @@ async def async_get_jwks(hass: HomeAssistant, *, force: bool = False) -> dict[st
         response = await client.get(JWKS_URL, timeout=HTTP_TIMEOUT)
         response.raise_for_status()
         jwks: dict[str, Any] = response.json()
-    except httpx2.HTTPError as err:
+    except HTTP_ERRORS as err:
         raise HomeAssistantError(
             f"Could not fetch the OpenAI signing keys: {err}"
         ) from err
@@ -704,7 +704,7 @@ async def _async_fetch_subscription_models(
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=HTTP_TIMEOUT,
         )
-    except httpx2.HTTPError as err:
+    except HTTP_ERRORS as err:
         raise HomeAssistantError(f"Error talking to OpenAI: {err}") from err
 
     if response.status_code in (401, 403):
@@ -714,7 +714,7 @@ async def _async_fetch_subscription_models(
 
     try:
         response.raise_for_status()
-    except httpx2.HTTPError as err:
+    except HTTP_ERRORS as err:
         raise HomeAssistantError(f"Error listing OpenAI models: {err}") from err
 
     try:

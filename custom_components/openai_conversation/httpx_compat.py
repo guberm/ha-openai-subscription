@@ -26,6 +26,12 @@ if TYPE_CHECKING:
 
 _AUTH_CLASSES: dict[str, Any] = {}
 
+# The httpx implementation Home Assistant hands to the SDK raises its own error
+# classes, so error handling has to know both.
+HTTP_ERRORS: tuple[type[BaseException], ...] = (
+    ((httpx2.HTTPError,) if httpx2 is not None else ()) + (httpx.HTTPError,)
+)
+
 
 def _module_for(client: Any) -> Any:
     """Return the httpx module whose client class this client belongs to."""

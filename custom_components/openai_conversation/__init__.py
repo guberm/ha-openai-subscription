@@ -83,11 +83,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bo
         except ConfigEntryAuthFailed:
             raise
         except HomeAssistantError as err:
-            raise ConfigEntryNotReady(err) from err
+            # Reading the catalog can fail for reasons which are not the entry's
+            # fault (a transient error on OpenAI's side, for example). Loading
+            # the entry is then the better outcome: the plan usage route reports
+            # an unsupported model itself when a request uses one.
+            LOGGER.warning("Could not read the OpenAI model catalog: %s", err)
+            models = []
 
         for subentry in entry.subentries.values():
             model = subentry.data.get(CONF_CHAT_MODEL)
-            if model is not None and model not in models:
+            if models and model is not None and model not in models:
                 raise ConfigEntryNotReady(
                     f"Model {model} is not available for this ChatGPT account"
                 )

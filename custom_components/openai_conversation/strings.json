@@ -14,6 +14,7 @@
       "invalid_state": "The sign in could not be verified (state mismatch). Start the sign in again.",
       "registration_incomplete": "The ChatGPT registration did not complete. Start the sign in again.",
       "unknown": "[%key:common::config_flow::error::unknown%]",
+      "unexpected_error": "Something went wrong while completing the sign in. Check the Home Assistant log and start the sign in again.",
       "wrong_account": "This sign in belongs to a different ChatGPT account than the entry being reauthenticated. Sign in with the account the entry was created with."
     },
     "step": {
