@@ -12,7 +12,7 @@ both so the same integration runs on the current release as well.
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator
+from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 try:  # pragma: no cover - depends on the Home Assistant release
     import httpx2
@@ -21,7 +21,8 @@ except ImportError:  # pragma: no cover
 
 import httpx
 
-from .chatgpt_auth import ChatGPTAuth
+if TYPE_CHECKING:
+    from .chatgpt_auth import ChatGPTAuth
 
 _AUTH_CLASSES: dict[str, Any] = {}
 
@@ -50,7 +51,6 @@ def _auth_class(module: Any) -> Any:
             def __init__(self, auth: ChatGPTAuth) -> None:
                 """Initialize the auth flow."""
                 self._chatgpt_auth = auth
-
             async def async_auth_flow(
                 self, request: Any
             ) -> AsyncGenerator[Any, Any]:
