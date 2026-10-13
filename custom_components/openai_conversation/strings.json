@@ -17,14 +17,25 @@
       "wrong_account": "This sign in belongs to a different ChatGPT account than the entry being reauthenticated. Sign in with the account the entry was created with."
     },
     "step": {
+      "api_key": {
+        "data": {
+          "api_key": "API key from OpenAI"
+        },
+        "data_description": {
+          "api_key": "Your OpenAI API key."
+        },
+        "description": "Enter your OpenAI API key. Instructions to obtain an API key can be found [here]({instructions_url}).",
+        "title": "API key"
+      },
       "auth_method": {
         "data": {
           "auth_method": "Authentication method"
         },
         "data_description": {
-          "auth_method": "Use an OpenAI API key, or sign in with ChatGPT to use an eligible ChatGPT plan (no API billing). The ChatGPT plan option does not include speech-to-text or text-to-speech."
+          "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
         },
-        "description": "Choose how this integration should authenticate. You can also switch the authentication method of an existing entry here."
+        "description": "Choose how this integration should authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
+        "title": "Authentication method"
       },
       "chatgpt": {
         "data": {
@@ -40,29 +51,30 @@
           "api_key": "[%key:common::config_flow::data::api_key%]"
         },
         "data_description": {
-          "api_key": "[%key:component::openai_conversation::config::step::user::data_description::api_key%]"
+          "api_key": "[%key:component::openai_conversation::config::step::api_key::data_description::api_key%]"
         },
-        "description": "Reauthentication required. Please enter your updated API key."
+        "description": "Reauthentication required. Please enter your updated API key.",
+        "title": "API key"
       },
       "reconfigure": {
         "data": {
           "api_key": "[%key:common::config_flow::data::api_key%]"
         },
         "data_description": {
-          "api_key": "[%key:component::openai_conversation::config::step::user::data_description::api_key%]"
+          "api_key": "[%key:component::openai_conversation::config::step::api_key::data_description::api_key%]"
         },
-        "description": "Enter your updated OpenAI API key."
+        "description": "Enter your updated OpenAI API key.",
+        "title": "API key"
       },
       "user": {
         "data": {
-          "api_key": "[%key:common::config_flow::data::api_key%]",
           "auth_method": "Authentication method"
         },
         "data_description": {
-          "api_key": "Your OpenAI API key.",
-          "auth_method": "Use an OpenAI API key, or sign in with ChatGPT to use your ChatGPT plan (preview). The ChatGPT plan option does not include speech to text, text to speech or image generation."
+          "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
         },
-        "description": "Set up OpenAI Conversation integration by providing your OpenAI API key, or by signing in with ChatGPT. Instructions to obtain an API key can be found [here]({instructions_url})."
+        "description": "Choose how to authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
+        "title": "Authentication method"
       }
     }
   },
@@ -254,8 +266,8 @@
   "selector": {
     "auth_method": {
       "options": {
-        "api_key": "OpenAI API key",
-        "chatgpt": "Sign in with ChatGPT (preview)"
+        "api_key": "API key",
+        "chatgpt": "Sign in with ChatGPT (ChatGPT plan)"
       }
     },
     "reasoning_effort": {

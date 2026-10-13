@@ -1,0 +1,315 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Service is already configured",
+            "plan_usage_not_granted": "The ChatGPT plan usage permission (chatgpt.tokens.use.direct) was not granted. Sign in again and approve the use of your ChatGPT plan."
+        },
+        "error": {
+            "access_denied": "The sign in was cancelled in the browser. Try again and approve access.",
+            "api_key_required": "An API key is required when using API key authentication.",
+            "cannot_connect": "Failed to connect",
+            "client_id_mismatch": "The browser returned a different ChatGPT registration. Start the sign in again.",
+            "invalid_auth": "Invalid authentication",
+            "invalid_callback_url": "This does not look like the URL your browser ended up on. Copy the full address from the browser address bar.",
+            "invalid_state": "The sign in could not be verified (state mismatch). Start the sign in again.",
+            "registration_incomplete": "The ChatGPT registration did not complete. Start the sign in again.",
+            "unknown": "Unexpected error",
+            "wrong_account": "This sign in belongs to a different ChatGPT account than the entry being reauthenticated. Sign in with the account the entry was created with."
+        },
+        "step": {
+            "api_key": {
+                "data": {
+                    "api_key": "API key from OpenAI"
+                },
+                "data_description": {
+                    "api_key": "Your OpenAI API key."
+                },
+                "description": "Enter your OpenAI API key. Instructions to obtain an API key can be found [here]({instructions_url}).",
+                "title": "API key"
+            },
+            "auth_method": {
+                "data": {
+                    "auth_method": "Authentication method"
+                },
+                "data_description": {
+                    "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
+                },
+                "description": "Choose how this integration should authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
+                "title": "Authentication method"
+            },
+            "chatgpt": {
+                "data": {
+                    "callback_url": "URL from the browser address bar"
+                },
+                "data_description": {
+                    "callback_url": "The page will fail to load. Copy the complete URL from your browser's address bar (it contains ?code=... and &state=...)."
+                },
+                "description": "Sign in with ChatGPT to use your ChatGPT plan for eligible requests. Your browser is on a different device, so open this URL on any device signed in to ChatGPT and approve the request:\n\n{auth_url}\n\nThe page that opens afterwards will fail to load. Copy the full URL from the address bar and paste it below.\n\nThis option does not include speech to text, text to speech or image generation."
+            },
+            "reauth_confirm": {
+                "data": {
+                    "api_key": "API key"
+                },
+                "data_description": {
+                    "api_key": "Your OpenAI API key."
+                },
+                "description": "Reauthentication required. Please enter your updated API key.",
+                "title": "API key"
+            },
+            "reconfigure": {
+                "data": {
+                    "api_key": "API key"
+                },
+                "data_description": {
+                    "api_key": "Your OpenAI API key."
+                },
+                "description": "Enter your updated OpenAI API key.",
+                "title": "API key"
+            },
+            "user": {
+                "data": {
+                    "auth_method": "Authentication method"
+                },
+                "data_description": {
+                    "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
+                },
+                "description": "Choose how to authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
+                "title": "Authentication method"
+            }
+        }
+    },
+    "config_subentries": {
+        "ai_task_data": {
+            "abort": {
+                "entry_not_loaded": "Cannot add things while the configuration is disabled."
+            },
+            "entry_type": "AI task",
+            "error": {
+                "code_interpreter_minimal_reasoning": "Code interpreter is not supported with minimal reasoning effort",
+                "model_not_supported": "This model is not supported, please select a different model",
+                "web_search_minimal_reasoning": "Web search is currently not supported with minimal reasoning effort"
+            },
+            "initiate_flow": {
+                "reconfigure": "Reconfigure AI task",
+                "user": "Add AI task"
+            },
+            "step": {
+                "additional": {
+                    "data": {
+                        "chat_model": "Model",
+                        "max_tokens": "Maximum tokens to return in response",
+                        "store_responses": "Store requests and responses in OpenAI",
+                        "temperature": "Temperature",
+                        "top_p": "Top P"
+                    },
+                    "data_description": {
+                        "store_responses": "If enabled, requests and responses are stored by OpenAI and visible in your OpenAI dashboard logs"
+                    },
+                    "title": "Additional settings"
+                },
+                "init": {
+                    "data": {
+                        "name": "Name",
+                        "recommended": "Recommended model settings"
+                    }
+                },
+                "model": {
+                    "data": {
+                        "code_interpreter": "Enable code interpreter tool",
+                        "image_model": "Image generation model",
+                        "inline_citations": "Include links in web search results",
+                        "pro_mode": "Pro mode",
+                        "reasoning_effort": "Reasoning effort",
+                        "reasoning_summary": "Reasoning summary",
+                        "search_context_size": "Search context size",
+                        "service_tier": "Service tier",
+                        "user_location": "Include home location",
+                        "web_search": "Enable web search"
+                    },
+                    "data_description": {
+                        "code_interpreter": "This tool, also known as the python tool to the model, allows it to run code to answer questions",
+                        "image_model": "The model to use when generating images",
+                        "inline_citations": "If disabled, additional prompt is added to ask the model to not include source citations",
+                        "pro_mode": "Perform more model work to improve reliability on difficult tasks and return a single final answer",
+                        "reasoning_effort": "How many reasoning tokens the model should generate before creating a response to the prompt",
+                        "reasoning_summary": "Controls the length and detail of reasoning summaries provided by the model",
+                        "search_context_size": "High level guidance for the amount of context window space to use for the search",
+                        "service_tier": "Controls the cost and response time",
+                        "user_location": "Refine search results based on geography",
+                        "web_search": "Allow the model to search the web for the latest information before generating a response"
+                    },
+                    "title": "Model-specific options"
+                }
+            }
+        },
+        "conversation": {
+            "abort": {
+                "entry_not_loaded": "Cannot add things while the configuration is disabled."
+            },
+            "entry_type": "Conversation agent",
+            "error": {
+                "code_interpreter_minimal_reasoning": "Code interpreter is not supported with minimal reasoning effort",
+                "model_not_supported": "This model is not supported, please select a different model",
+                "web_search_minimal_reasoning": "Web search is currently not supported with minimal reasoning effort"
+            },
+            "initiate_flow": {
+                "reconfigure": "Reconfigure conversation agent",
+                "user": "Add conversation agent"
+            },
+            "step": {
+                "additional": {
+                    "data": {
+                        "chat_model": "Model",
+                        "max_tokens": "Maximum tokens to return in response",
+                        "store_responses": "Store requests and responses in OpenAI",
+                        "temperature": "Temperature",
+                        "top_p": "Top P"
+                    },
+                    "data_description": {
+                        "store_responses": "If enabled, requests and responses are stored by OpenAI and visible in your OpenAI dashboard logs"
+                    },
+                    "title": "Additional settings"
+                },
+                "init": {
+                    "data": {
+                        "llm_hass_api": "Control Home Assistant",
+                        "name": "Name",
+                        "prompt": "Instructions",
+                        "recommended": "Recommended model settings"
+                    },
+                    "data_description": {
+                        "prompt": "Instruct how the LLM should respond. This can be a template."
+                    }
+                },
+                "model": {
+                    "data": {
+                        "code_interpreter": "Enable code interpreter tool",
+                        "image_model": "Image generation model",
+                        "inline_citations": "Include links in web search results",
+                        "pro_mode": "Pro mode",
+                        "reasoning_effort": "Reasoning effort",
+                        "reasoning_summary": "Reasoning summary",
+                        "search_context_size": "Search context size",
+                        "service_tier": "Service tier",
+                        "user_location": "Include home location",
+                        "web_search": "Enable web search"
+                    },
+                    "data_description": {
+                        "code_interpreter": "This tool, also known as the python tool to the model, allows it to run code to answer questions",
+                        "image_model": "The model to use when generating images",
+                        "inline_citations": "If disabled, additional prompt is added to ask the model to not include source citations",
+                        "pro_mode": "Perform more model work to improve reliability on difficult tasks and return a single final answer",
+                        "reasoning_effort": "How many reasoning tokens the model should generate before creating a response to the prompt",
+                        "reasoning_summary": "Controls the length and detail of reasoning summaries provided by the model",
+                        "search_context_size": "High level guidance for the amount of context window space to use for the search",
+                        "service_tier": "Controls the cost and response time",
+                        "user_location": "Refine search results based on geography",
+                        "web_search": "Allow the model to search the web for the latest information before generating a response"
+                    },
+                    "title": "Model-specific options"
+                }
+            }
+        },
+        "stt": {
+            "abort": {
+                "entry_not_loaded": "Cannot add things while the configuration is disabled."
+            },
+            "entry_type": "Speech-to-text",
+            "initiate_flow": {
+                "reconfigure": "Reconfigure speech-to-text service",
+                "user": "Add speech-to-text service"
+            },
+            "step": {
+                "init": {
+                    "data": {
+                        "chat_model": "Model",
+                        "name": "Name",
+                        "prompt": "Instructions"
+                    },
+                    "data_description": {
+                        "chat_model": "The model to use to transcribe speech.",
+                        "prompt": "Use this prompt to improve the quality of the transcripts. Translate to the pipeline language for best results. See the documentation for more details."
+                    }
+                }
+            }
+        },
+        "tts": {
+            "abort": {
+                "entry_not_loaded": "Cannot add things while the configuration is disabled."
+            },
+            "entry_type": "Text-to-speech",
+            "initiate_flow": {
+                "reconfigure": "Reconfigure text-to-speech service",
+                "user": "Add text-to-speech service"
+            },
+            "step": {
+                "init": {
+                    "data": {
+                        "name": "Name",
+                        "prompt": "Instructions",
+                        "tts_speed": "Speed"
+                    },
+                    "data_description": {
+                        "prompt": "Control aspects of speech, including accent, emotional range, intonation, impressions, speed of speech, tone, whispering, and more",
+                        "tts_speed": "Speed of the generated speech"
+                    }
+                }
+            }
+        }
+    },
+    "issues": {
+        "organization_verification_required": {
+            "description": "Your organization must be verified to use this model. Please go to {platform_settings} and select Verify Organization. If you just verified, it can take up to 15 minutes for access to propagate.",
+            "title": "Organization verification required"
+        }
+    },
+    "selector": {
+        "auth_method": {
+            "options": {
+                "api_key": "API key",
+                "chatgpt": "Sign in with ChatGPT (ChatGPT plan)"
+            }
+        },
+        "reasoning_effort": {
+            "options": {
+                "high": "High",
+                "low": "Low",
+                "max": "Max",
+                "medium": "Medium",
+                "minimal": "Minimal",
+                "none": "None",
+                "xhigh": "X-High"
+            }
+        },
+        "reasoning_summary": {
+            "options": {
+                "auto": "Auto",
+                "concise": "Concise",
+                "detailed": "Detailed",
+                "off": "Off"
+            }
+        },
+        "search_context_size": {
+            "options": {
+                "high": "High",
+                "low": "Low",
+                "medium": "Medium"
+            }
+        },
+        "service_tier": {
+            "options": {
+                "auto": "Auto",
+                "default": "Standard",
+                "flex": "Flex",
+                "priority": "Priority"
+            }
+        },
+        "verbosity": {
+            "options": {
+                "high": "High",
+                "low": "Low",
+                "medium": "Medium"
+            }
+        }
+    }
+}

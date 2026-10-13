@@ -138,25 +138,6 @@ STEP_API_KEY_DATA_SCHEMA = probatio.Schema(
         probatio.Required(probatio.Secret(CONF_API_KEY)): str,
     }
 )
-STEP_USER_DATA_SCHEMA = probatio.Schema(
-    {
-        probatio.Required(
-            CONF_AUTH_METHOD, default=AUTH_METHOD_API_KEY
-        ): SelectSelector(
-            SelectSelectorConfig(
-                options=[AUTH_METHOD_API_KEY, AUTH_METHOD_CHATGPT],
-                translation_key=CONF_AUTH_METHOD,
-                mode=SelectSelectorMode.DROPDOWN,
-            )
-        ),
-        probatio.Optional(probatio.Secret(CONF_API_KEY)): str,
-    }
-)
-STEP_CALLBACK_DATA_SCHEMA = probatio.Schema(
-    {
-        probatio.Required(CONF_CALLBACK_URL): str,
-    }
-)
 STEP_AUTH_METHOD_DATA_SCHEMA = probatio.Schema(
     {
         probatio.Required(
@@ -170,6 +151,11 @@ STEP_AUTH_METHOD_DATA_SCHEMA = probatio.Schema(
         ),
     }
 )
+STEP_CALLBACK_DATA_SCHEMA = probatio.Schema(
+    {
+        probatio.Required(CONF_CALLBACK_URL): str,
+    }
+)
 
 # Subentry types the ChatGPT plan usage route cannot provide.
 SPEECH_SUBENTRY_TYPES = ("stt", "tts")
@@ -178,7 +164,8 @@ SPEECH_SUBENTRY_TYPES = ("stt", "tts")
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
     """Validate the user input allows us to connect.
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    Data has the keys from STEP_API_KEY_DATA_SCHEMA with values provided by the
+    user.
     """
     client = openai.AsyncOpenAI(
         api_key=data[CONF_API_KEY],
@@ -200,8 +187,27 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step."""
-        return await self._async_step_api_key(user_input, "user")
+        """Handle the initial step.
+
+        The authentication method and the credential are asked in separate
+        steps: a Home Assistant form step cannot hide a field conditionally, so
+        the API key field must not sit in the form that also shows the method.
+        """
+        if user_input is None:
+            return self.async_show_form(
+                step_id="user",
+                data_schema=STEP_AUTH_METHOD_DATA_SCHEMA,
+                errors={},
+            )
+        if user_input.get(CONF_AUTH_METHOD) == AUTH_METHOD_CHATGPT:
+            return await self.async_step_chatgpt()
+        return await self.async_step_api_key()
+
+    async def async_step_api_key(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle the API key of a new entry."""
+        return await self._async_step_api_key(user_input, "api_key")
 
     @callback
     def _siwc_entry(self) -> ConfigEntry | None:
@@ -259,9 +265,6 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            if user_input.get(CONF_AUTH_METHOD) == AUTH_METHOD_CHATGPT:
-                return await self.async_step_chatgpt()
-
             if not (api_key := user_input.get(CONF_API_KEY)):
                 errors[CONF_API_KEY] = "api_key_required"
             else:
@@ -335,10 +338,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(
-                STEP_USER_DATA_SCHEMA
-                if step_id == "user"
-                else STEP_API_KEY_DATA_SCHEMA,
-                user_input,
+                STEP_API_KEY_DATA_SCHEMA, user_input
             ),
             errors=errors,
             description_placeholders={
