@@ -677,11 +677,31 @@ async def async_get_subscription_models(
     objects carrying a `slug`) which the OpenAI SDK cannot parse, so the request
     is made directly.
     """
+    return await _async_fetch_subscription_models(
+        hass, await auth.async_get_access_token()
+    )
+
+
+async def async_get_subscription_models_for_credentials(
+    hass: HomeAssistant, credentials: ChatGPTCredentials
+) -> list[str]:
+    """Return the model slugs of an account which is not stored in an entry yet.
+
+    Used while creating or converting a config entry, when there is no
+    `ChatGPTAuth` (and therefore no config entry) to supply the access token.
+    """
+    return await _async_fetch_subscription_models(hass, credentials.access_token)
+
+
+async def _async_fetch_subscription_models(
+    hass: HomeAssistant, access_token: str
+) -> list[str]:
+    """Return the model slugs offered to a ChatGPT plan account."""
     client = get_async_client(hass)
     try:
         response = await client.get(
             MODELS_URL,
-            headers={"Authorization": f"Bearer {await auth.async_get_access_token()}"},
+            headers={"Authorization": f"Bearer {access_token}"},
             timeout=HTTP_TIMEOUT,
         )
     except httpx2.HTTPError as err:
@@ -798,6 +818,7 @@ __all__ = [
     "ChatGPTSubscriptionClient",
     "async_get_agent_host_id",
     "async_get_subscription_models",
+    "async_get_subscription_models_for_credentials",
     "async_validate_id_token",
     "create_authorization_request",
     "credentials_from_token",

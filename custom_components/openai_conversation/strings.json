@@ -17,6 +17,15 @@
       "wrong_account": "This sign in belongs to a different ChatGPT account than the entry being reauthenticated. Sign in with the account the entry was created with."
     },
     "step": {
+      "auth_method": {
+        "data": {
+          "auth_method": "Authentication method"
+        },
+        "data_description": {
+          "auth_method": "Use an OpenAI API key, or sign in with ChatGPT to use an eligible ChatGPT plan (no API billing). The ChatGPT plan option does not include speech-to-text or text-to-speech."
+        },
+        "description": "Choose how this integration should authenticate. You can also switch the authentication method of an existing entry here."
+      },
       "chatgpt": {
         "data": {
           "callback_url": "URL from the browser address bar"
