@@ -52,9 +52,9 @@
                     "chat_model": "Model"
                 },
                 "data_description": {
-                    "chat_model": "The model to use with your ChatGPT plan. If the model catalog could not be read, enter a model of your ChatGPT plan, for example `gpt-5.5`."
+                    "chat_model": "The models your ChatGPT plan offers. If the model catalog could not be read, this list is a suggestion: pick one of them or type another model of your plan."
                 },
-                "description": "Choose the model to use with your ChatGPT plan. The plan rejects the regular API default model, so this must be one of the models your account offers.",
+                "description": "Choose the model to use with your ChatGPT plan. The plan usage route rejects the regular API default model, so the model has to be one your account offers.",
                 "title": "Model"
             },
             "reauth_confirm": {

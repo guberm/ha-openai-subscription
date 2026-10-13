@@ -155,6 +155,31 @@ SUBSCRIPTION_STREAM = True
 # access token attached by `ChatGPTSubscriptionClient.custom_auth`.
 PLACEHOLDER_API_KEY = "chatgpt-plan"
 
+# Models which were observed in the catalog of a ChatGPT plan account. The
+# catalog is authoritative and is used whenever it can be read, but it can be
+# unavailable (OpenAI answered a transient HTTP 520 while this was written) and
+# the plan usage route rejects the regular API default model, so these are
+# offered as suggestions in that case. The model field stays editable, so a
+# model outside this list can still be used.
+SUBSCRIPTION_MODEL_SUGGESTIONS: list[str] = [
+    "gpt-6.1-sol",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-reserve",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-daybreak-blue-latest",
+    "gpt-5.5",
+    "codex-auto-review",
+]
+
+
+def subscription_model_options(models: list[str]) -> list[str]:
+    """Return the models to offer, falling back to the known suggestions."""
+    return models or SUBSCRIPTION_MODEL_SUGGESTIONS
+
 
 def is_chatgpt_entry(entry: ConfigEntry) -> bool:
     """Return if a config entry authenticates with a ChatGPT plan.

@@ -63,6 +63,7 @@ from .chatgpt_auth import (
     credentials_from_token,
     is_chatgpt_entry,
     parse_callback_url,
+    subscription_model_options,
 )
 from .const import (
     AUTH_METHOD_API_KEY,
@@ -566,22 +567,18 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
                 ],
             )
 
-        models = self._siwc_models
-        if models:
-            schema = probatio.Schema(
-                {
-                    probatio.Required(
-                        CONF_CHAT_MODEL, default=models[0]
-                    ): SelectSelector(
-                        SelectSelectorConfig(
-                            options=models,
-                            mode=SelectSelectorMode.DROPDOWN,
-                        )
+        options = subscription_model_options(self._siwc_models)
+        schema = probatio.Schema(
+            {
+                probatio.Required(CONF_CHAT_MODEL, default=options[0]): SelectSelector(
+                    SelectSelectorConfig(
+                        options=options,
+                        custom_value=True,
+                        mode=SelectSelectorMode.DROPDOWN,
                     )
-                }
-            )
-        else:
-            schema = probatio.Schema({probatio.Required(CONF_CHAT_MODEL): str})
+                )
+            }
+        )
         return self.async_show_form(step_id="chatgpt_model", data_schema=schema)
 
     async def async_step_reauth(
@@ -788,7 +785,10 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
             # is only used as the default when the catalog could be read or a
             # model is already stored on the subentry.
             default = (
-                catalog_models[0] if catalog_available else options.get(CONF_CHAT_MODEL)
+                catalog_models[0]
+                if catalog_available
+                else options.get(CONF_CHAT_MODEL)
+                or subscription_model_options(catalog_models)[0]
             )
             step_schema: VolDictType = {
                 (
@@ -797,7 +797,7 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
                     else probatio.Required(CONF_CHAT_MODEL)
                 ): SelectSelector(
                     SelectSelectorConfig(
-                        options=catalog_models,
+                        options=subscription_model_options(catalog_models),
                         custom_value=True,
                         mode=SelectSelectorMode.DROPDOWN,
                     )
