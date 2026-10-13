@@ -90,6 +90,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bo
             LOGGER.warning("Could not read the OpenAI model catalog: %s", err)
             models = []
 
+        # An entry created before the model was chosen in the sign in falls
+        # back to the API default model, which the plan usage route rejects.
+        # Bind the catalog's first model to the subentries which have none, but
+        # only when the catalog could be read: writing a guessed model would be
+        # worse than leaving the subentry alone.
+        if models:
+            for subentry in entry.subentries.values():
+                if (
+                    subentry.subentry_type in ("conversation", "ai_task_data")
+                    and subentry.data.get(CONF_CHAT_MODEL) is None
+                ):
+                    hass.config_entries.async_update_subentry(
+                        entry,
+                        subentry,
+                        data={**subentry.data, CONF_CHAT_MODEL: models[0]},
+                    )
+                    LOGGER.info(
+                        "ChatGPT plan subentry %s had no model, bound the "
+                        "catalog model %s",
+                        subentry.subentry_id,
+                        models[0],
+                    )
+
         for subentry in entry.subentries.values():
             model = subentry.data.get(CONF_CHAT_MODEL)
             if models and model is not None and model not in models:

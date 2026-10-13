@@ -184,6 +184,12 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     # Pending Sign in with ChatGPT authorization attempt.
     _siwc_request: AuthorizationRequest
 
+    # Credentials and entry data of a completed sign in, held while the user
+    # picks a model before a new entry is created.
+    _siwc_credentials: ChatGPTCredentials
+    _siwc_data: dict[str, Any]
+    _siwc_models: list[str]
+
     @override
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -219,9 +225,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
             return self._get_reconfigure_entry()
         return None
 
-    async def _async_catalog_default(
-        self, credentials: ChatGPTCredentials
-    ) -> str | None:
+    async def _async_catalog_models(self, credentials: ChatGPTCredentials) -> list[str]:
         """Return the first model of the signed in account's catalog, if any.
 
         The catalog is only used to preselect a model. Reading it can fail
@@ -229,7 +233,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         not fail the sign in: the default model is used instead.
         """
         try:
-            models = await async_get_subscription_models_for_credentials(
+            return await async_get_subscription_models_for_credentials(
                 self.hass, credentials
             )
         except HomeAssistantError as err:
@@ -238,7 +242,13 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
                 "model instead: %s",
                 err,
             )
-            return None
+            return []
+
+    async def _async_catalog_default(
+        self, credentials: ChatGPTCredentials
+    ) -> str | None:
+        """Return the first model of the signed in account's catalog, if any."""
+        models = await self._async_catalog_models(credentials)
         return models[0] if models else None
 
     @callback
@@ -510,33 +520,69 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
 
         await self.async_set_unique_id(credentials.unique_id)
         self._abort_if_unique_id_configured()
-        try:
-            model = await self._async_catalog_default(credentials)
-        except HomeAssistantError as err:
-            _LOGGER.error("Could not list the ChatGPT plan models: %s", err)
-            return self._show_chatgpt_form({"base": "cannot_connect"})
-        # ChatGPT plan usage does not support speech to text, text to speech or
-        # image generation, and it serves its own catalog instead of the API
-        # default model.
-        model_option = {CONF_CHAT_MODEL: model} if model is not None else {}
-        return self.async_create_entry(
-            title=DEFAULT_CHATGPT_TITLE,
-            data=data,
-            subentries=[
+        # The plan usage route rejects the regular API default model, so a new
+        # entry must not be created before the user picked a model. The catalog
+        # of the signed in account is offered when it can be read; when it
+        # cannot, the user enters a model of their plan instead.
+        self._siwc_credentials = credentials
+        self._siwc_data = data
+        self._siwc_models = await self._async_catalog_models(credentials)
+        return await self.async_step_chatgpt_model()
+
+    async def async_step_chatgpt_model(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask which model a new ChatGPT plan entry should use.
+
+        ChatGPT plan usage does not support speech to text, text to speech or
+        image generation, and it serves its own catalog instead of the API
+        default model, which it rejects. The catalog is offered as a dropdown;
+        when it could not be read, the user enters a model instead.
+        """
+        if user_input is not None:
+            model = user_input[CONF_CHAT_MODEL]
+            return self.async_create_entry(
+                title=DEFAULT_CHATGPT_TITLE,
+                data=self._siwc_data,
+                subentries=[
+                    {
+                        "subentry_type": "conversation",
+                        "data": {
+                            **RECOMMENDED_CONVERSATION_OPTIONS,
+                            CONF_CHAT_MODEL: model,
+                        },
+                        "title": DEFAULT_CONVERSATION_NAME,
+                        "unique_id": None,
+                    },
+                    {
+                        "subentry_type": "ai_task_data",
+                        "data": {
+                            **RECOMMENDED_AI_TASK_OPTIONS,
+                            CONF_CHAT_MODEL: model,
+                        },
+                        "title": DEFAULT_AI_TASK_NAME,
+                        "unique_id": None,
+                    },
+                ],
+            )
+
+        models = self._siwc_models
+        if models:
+            schema = probatio.Schema(
                 {
-                    "subentry_type": "conversation",
-                    "data": {**RECOMMENDED_CONVERSATION_OPTIONS, **model_option},
-                    "title": DEFAULT_CONVERSATION_NAME,
-                    "unique_id": None,
-                },
-                {
-                    "subentry_type": "ai_task_data",
-                    "data": {**RECOMMENDED_AI_TASK_OPTIONS, **model_option},
-                    "title": DEFAULT_AI_TASK_NAME,
-                    "unique_id": None,
-                },
-            ],
-        )
+                    probatio.Required(
+                        CONF_CHAT_MODEL, default=models[0]
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            options=models,
+                            mode=SelectSelectorMode.DROPDOWN,
+                        )
+                    )
+                }
+            )
+        else:
+            schema = probatio.Schema({probatio.Required(CONF_CHAT_MODEL): str})
+        return self.async_show_form(step_id="chatgpt_model", data_schema=schema)
 
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]
@@ -724,22 +770,31 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
         subscription = is_chatgpt_entry(self._get_entry())
 
         catalog_models: list[str] = []
+        catalog_available = False
         if subscription:
             try:
                 catalog_models = await async_get_subscription_models(
                     self.hass,
                     ChatGPTAuth.from_entry(self.hass, self._get_entry()),
                 )
+                catalog_available = True
             except HomeAssistantError as err:
-                # The selector then allows any value to be typed, which is
-                # better than refusing to open the options at all.
+                # The catalog could not be read, which says nothing about the
+                # model the user submits: it cannot be checked against the
+                # catalog and is therefore accepted. The selector allows any
+                # value to be typed.
                 _LOGGER.warning("Could not read the OpenAI model catalog: %s", err)
+            # The API default model is rejected by the plan usage route, so it
+            # is only used as the default when the catalog could be read or a
+            # model is already stored on the subentry.
+            default = (
+                catalog_models[0] if catalog_available else options.get(CONF_CHAT_MODEL)
+            )
             step_schema: VolDictType = {
-                probatio.Optional(
-                    CONF_CHAT_MODEL,
-                    default=catalog_models[0]
-                    if catalog_models
-                    else RECOMMENDED_CHAT_MODEL,
+                (
+                    probatio.Required(CONF_CHAT_MODEL, default=default)
+                    if default
+                    else probatio.Required(CONF_CHAT_MODEL)
                 ): SelectSelector(
                     SelectSelectorConfig(
                         options=catalog_models,
@@ -779,7 +834,13 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
         if user_input is not None:
             options.update(user_input)
             if subscription:
-                if user_input.get(CONF_CHAT_MODEL) not in catalog_models:
+                # Only a model the catalog actually offers is an error. When
+                # the catalog could not be read it cannot be checked and the
+                # submitted model is accepted.
+                if (
+                    catalog_available
+                    and user_input.get(CONF_CHAT_MODEL) not in catalog_models
+                ):
                     errors[CONF_CHAT_MODEL] = "model_not_supported"
             elif user_input.get(CONF_CHAT_MODEL) in UNSUPPORTED_MODELS:
                 errors[CONF_CHAT_MODEL] = "model_not_supported"
@@ -793,6 +854,14 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
                 probatio.Schema(step_schema), options
             ),
             errors=errors,
+            description_placeholders={
+                "catalog_note": (
+                    ""
+                    if catalog_available or not subscription
+                    else " The model catalog could not be read. Enter a model of "
+                    "your ChatGPT plan, for example `gpt-5.5`."
+                )
+            },
         )
 
     async def async_step_model(

@@ -47,6 +47,16 @@
         },
         "description": "Sign in with ChatGPT to use your ChatGPT plan for eligible requests. Your browser is on a different device, so open this URL on any device signed in to ChatGPT and approve the request:\n\n{auth_url}\n\nThe page that opens afterwards will fail to load. Copy the full URL from the address bar and paste it below.\n\nThis option does not include speech to text, text to speech or image generation."
       },
+      "chatgpt_model": {
+        "data": {
+          "chat_model": "Model"
+        },
+        "data_description": {
+          "chat_model": "The model to use with your ChatGPT plan. If the model catalog could not be read, enter a model of your ChatGPT plan, for example `gpt-5.5`."
+        },
+        "description": "Choose the model to use with your ChatGPT plan. The plan rejects the regular API default model, so this must be one of the models your account offers.",
+        "title": "Model"
+      },
       "reauth_confirm": {
         "data": {
           "api_key": "[%key:common::config_flow::data::api_key%]"
@@ -106,6 +116,7 @@
           "data_description": {
             "store_responses": "[%key:component::openai_conversation::config_subentries::conversation::step::additional::data_description::store_responses%]"
           },
+          "description": "[%key:component::openai_conversation::config_subentries::conversation::step::additional::description%]",
           "title": "[%key:component::openai_conversation::config_subentries::conversation::step::additional::title%]"
         },
         "init": {
@@ -169,6 +180,7 @@
           "data_description": {
             "store_responses": "If enabled, requests and responses are stored by OpenAI and visible in your OpenAI dashboard logs"
           },
+          "description": "Choose the model and the request parameters.{catalog_note}",
           "title": "Additional settings"
         },
         "init": {
