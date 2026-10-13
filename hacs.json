@@ -1,0 +1,7 @@
+{
+  "name": "OpenAI (Sign in with ChatGPT)",
+  "content_in_root": false,
+  "homeassistant": "2026.10.0",
+  "zip_release": false,
+  "render_readme": true
+}
