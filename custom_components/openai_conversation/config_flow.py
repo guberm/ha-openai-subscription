@@ -53,6 +53,7 @@ from .chatgpt_auth import (
     ChatGPTAuth,
     ChatGPTSubscriptionClient,
     async_get_agent_host_id,
+    async_get_subscription_models,
     async_token_request,
     async_validate_id_token,
     create_authorization_request,
@@ -575,17 +576,37 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
         options = self.options
         errors: dict[str, str] = {}
 
-        # ChatGPT plan usage rejects the sampling and storage parameters.
+        # ChatGPT plan usage rejects the sampling and storage parameters. Its
+        # chat model has to be one of the models of the account's catalog.
         subscription = is_chatgpt_entry(self._get_entry())
 
-        step_schema: VolDictType = {
-            probatio.Optional(
-                CONF_CHAT_MODEL,
-                default=RECOMMENDED_CHAT_MODEL,
-            ): str,
-        }
-
-        if not subscription:
+        catalog_models: list[str] = []
+        if subscription:
+            catalog_models = await async_get_subscription_models(
+                self.hass,
+                ChatGPTAuth.from_entry(self.hass, self._get_entry()),
+            )
+            step_schema: VolDictType = {
+                probatio.Optional(
+                    CONF_CHAT_MODEL,
+                    default=catalog_models[0]
+                    if catalog_models
+                    else RECOMMENDED_CHAT_MODEL,
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=catalog_models,
+                        custom_value=True,
+                        mode=SelectSelectorMode.DROPDOWN,
+                    )
+                ),
+            }
+        else:
+            step_schema = {
+                probatio.Optional(
+                    CONF_CHAT_MODEL,
+                    default=RECOMMENDED_CHAT_MODEL,
+                ): str,
+            }
             step_schema.update(
                 {
                     probatio.Optional(
@@ -609,7 +630,10 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
 
         if user_input is not None:
             options.update(user_input)
-            if user_input.get(CONF_CHAT_MODEL) in UNSUPPORTED_MODELS:
+            if subscription:
+                if user_input.get(CONF_CHAT_MODEL) not in catalog_models:
+                    errors[CONF_CHAT_MODEL] = "model_not_supported"
+            elif user_input.get(CONF_CHAT_MODEL) in UNSUPPORTED_MODELS:
                 errors[CONF_CHAT_MODEL] = "model_not_supported"
 
             if not errors:

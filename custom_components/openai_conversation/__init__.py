@@ -7,7 +7,11 @@ import openai
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import CONF_API_KEY, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryNotReady,
+    HomeAssistantError,
+)
 from homeassistant.helpers import (
     config_validation as cv,
     device_registry as dr,
@@ -16,7 +20,12 @@ from homeassistant.helpers import (
 from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.typing import UNDEFINED, ConfigType, UndefinedType
 
-from .chatgpt_auth import ChatGPTAuth, ChatGPTSubscriptionClient, is_chatgpt_entry
+from .chatgpt_auth import (
+    ChatGPTAuth,
+    ChatGPTSubscriptionClient,
+    async_get_subscription_models,
+    is_chatgpt_entry,
+)
 from .const import (
     CONF_CHAT_MODEL,
     CONF_REASONING_SUMMARY,
@@ -47,11 +56,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bool:
     """Set up OpenAI Conversation from a config entry."""
+    auth: ChatGPTAuth | None = None
     if is_chatgpt_entry(entry):
         # A ChatGPT plan access token is the credential. It is refreshed by the
         # client before every request and on a 401.
+        auth = ChatGPTAuth.from_entry(hass, entry)
         client: openai.AsyncClient = ChatGPTSubscriptionClient(
-            ChatGPTAuth.from_entry(hass, entry),
+            auth,
             http_client=get_async_client(hass),
         )
     else:
@@ -64,12 +75,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bo
     # (caching done by library)
     _ = await hass.async_add_executor_job(client.platform_headers)
 
-    try:
-        await client.models.list(timeout=10.0)
-    except openai.AuthenticationError as err:
-        raise ConfigEntryAuthFailed(err) from err
-    except openai.OpenAIError as err:
-        raise ConfigEntryNotReady(err) from err
+    if auth is not None:
+        # The plan usage route serves the account's own model catalog instead of
+        # the regular models list, and it rejects models outside that catalog.
+        try:
+            models = await async_get_subscription_models(hass, auth)
+        except ConfigEntryAuthFailed:
+            raise
+        except HomeAssistantError as err:
+            raise ConfigEntryNotReady(err) from err
+
+        for subentry in entry.subentries.values():
+            model = subentry.data.get(CONF_CHAT_MODEL)
+            if model is not None and model not in models:
+                raise ConfigEntryNotReady(
+                    f"Model {model} is not available for this ChatGPT account"
+                )
+    else:
+        try:
+            await client.models.list(timeout=10.0)
+        except openai.AuthenticationError as err:
+            raise ConfigEntryAuthFailed(err) from err
+        except openai.OpenAIError as err:
+            raise ConfigEntryNotReady(err) from err
 
     entry.runtime_data = client
 

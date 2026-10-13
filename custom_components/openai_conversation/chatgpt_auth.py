@@ -51,6 +51,7 @@ TOKEN_URL = "https://auth.openai.com/api/accounts/oauth/token"
 JWKS_URL = "https://auth.openai.com/.well-known/jwks.json"
 ISSUER = "https://auth.openai.com"
 RESOURCE = "https://api.openai.com/v1"
+MODELS_URL = "https://api.openai.com/v1/models"
 
 # The callback URI must be an HTTP loopback address on 127.0.0.1; only the port
 # may vary. A fixed port keeps the URI stable between authorization attempts.
@@ -128,20 +129,12 @@ SUBSCRIPTION_UNSUPPORTED_PARAMS = (
     "prompt_cache_options",
     "prompt_cache_retention",
     "safety_identifier",
+    "service_tier",
     "temperature",
     "top_logprobs",
     "top_p",
     "truncation",
     "user",
-)
-
-# Function tools are accepted only when they are grouped in one namespace tool
-# on the subscription route; a flat function tool list is rejected. Naming one
-# function inside a namespace is not documented, so a nested `tool_choice` is
-# dropped instead of translated.
-SUBSCRIPTION_TOOLS_NAMESPACE = "home_assistant"
-SUBSCRIPTION_TOOLS_NAMESPACE_DESCRIPTION = (
-    "Tools which read and control the user's Home Assistant instance."
 )
 
 # Hosted tools which the subscription route does not provide. Web search is
@@ -675,6 +668,54 @@ class ChatGPTSubscriptionClient(openai.AsyncOpenAI):
         return create_auth_flow(self._client, self.auth)
 
 
+async def async_get_subscription_models(
+    hass: HomeAssistant, auth: ChatGPTAuth
+) -> list[str]:
+    """Return the model slugs offered to a ChatGPT plan account.
+
+    The plan usage route serves a non-standard catalog body (a `models` list of
+    objects carrying a `slug`) which the OpenAI SDK cannot parse, so the request
+    is made directly.
+    """
+    client = get_async_client(hass)
+    try:
+        response = await client.get(
+            MODELS_URL,
+            headers={"Authorization": f"Bearer {await auth.async_get_access_token()}"},
+            timeout=HTTP_TIMEOUT,
+        )
+    except httpx2.HTTPError as err:
+        raise HomeAssistantError(f"Error talking to OpenAI: {err}") from err
+
+    if response.status_code in (401, 403):
+        raise ConfigEntryAuthFailed(
+            "Sign in with ChatGPT authentication failed while listing models"
+        )
+
+    try:
+        response.raise_for_status()
+    except httpx2.HTTPError as err:
+        raise HomeAssistantError(f"Error listing OpenAI models: {err}") from err
+
+    try:
+        payload = response.json()
+    except ValueError as err:
+        raise HomeAssistantError("Invalid model catalog response from OpenAI") from err
+
+    models = payload.get("models") if isinstance(payload, dict) else None
+    if not isinstance(models, list):
+        raise HomeAssistantError(
+            "The model catalog response from OpenAI did not contain a models list"
+        )
+
+    slugs: list[str] = [
+        item["slug"]
+        for item in models
+        if isinstance(item, dict) and isinstance(item.get("slug"), str)
+    ]
+    return slugs
+
+
 def subscription_error_message(err: openai.OpenAIError) -> str | None:
     """Return a helpful message for a subscription route error."""
     code: Any = getattr(err, "code", None)
@@ -694,7 +735,7 @@ def shape_request_for_subscription(
     The subscription route only accepts `store: false` together with
     `stream: true` and rejects a documented list of parameters. It also does
     not accept system input items: the system prompt is sent as `instructions`
-    instead.
+    instead. Function tools are accepted flat.
     """
     for param in SUBSCRIPTION_UNSUPPORTED_PARAMS:
         model_args.pop(param, None)
@@ -715,15 +756,6 @@ def shape_request_for_subscription(
     if instructions:
         model_args["instructions"] = instructions
 
-    # A replayed function call has to name the namespace it ran in.
-    for item in messages:
-        if (
-            isinstance(item, dict)
-            and item.get("type") == "function_call"
-            and not item.get("namespace")
-        ):
-            item["namespace"] = SUBSCRIPTION_TOOLS_NAMESPACE
-
     # The route rejects explicit `system` input items.
     for item in messages:
         if (
@@ -734,31 +766,20 @@ def shape_request_for_subscription(
             item["role"] = "developer"
 
     # Hosted tools which the subscription route does not provide are removed;
-    # the function tools are grouped in one namespace tool.
+    # function tools are sent flat and `web_search` is kept.
     if tools := model_args.get("tools"):
-        functions = [tool for tool in tools if tool.get("type") == "function"]
-        hosted = [
+        kept = [
             tool
             for tool in tools
-            if tool.get("type") is not None
-            and tool.get("type") != "function"
-            and tool.get("type") not in SUBSCRIPTION_UNSUPPORTED_TOOL_TYPES
+            if tool.get("type") == "function"
+            or tool.get("type") not in SUBSCRIPTION_UNSUPPORTED_TOOL_TYPES
         ]
-        model_args.pop("tools")
-        if functions:
-            model_args["tools"] = [
-                {
-                    "type": "namespace",
-                    "name": SUBSCRIPTION_TOOLS_NAMESPACE,
-                    "description": SUBSCRIPTION_TOOLS_NAMESPACE_DESCRIPTION,
-                    "tools": functions,
-                },
-                *hosted,
-            ]
-        elif hosted:
-            model_args["tools"] = hosted
+        if kept:
+            model_args["tools"] = kept
+        else:
+            model_args.pop("tools")
 
-    # Naming one function inside a namespace is not supported.
+    # Naming a single function as `tool_choice` is not supported.
     if isinstance(model_args.get("tool_choice"), dict):
         model_args.pop("tool_choice")
 
@@ -776,6 +797,7 @@ __all__ = [
     "ChatGPTCredentials",
     "ChatGPTSubscriptionClient",
     "async_get_agent_host_id",
+    "async_get_subscription_models",
     "async_validate_id_token",
     "create_authorization_request",
     "credentials_from_token",
