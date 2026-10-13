@@ -16,9 +16,6 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "quality_scale": "bronze",
-  "requirements": [
-    "openai==3.26.0"
-  ],
-  "version": "1.0.0",
+  "version": "1.0.1",
   "issue_tracker": "https://github.com/guberm/ha-openai-subscription/issues"
 }
