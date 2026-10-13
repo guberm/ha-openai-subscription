@@ -106,6 +106,9 @@ async def async_migrate_integration(hass: HomeAssistant) -> None:
     device_registry = dr.async_get(hass)
 
     for entry in entries:
+        if CONF_API_KEY not in entry.data:
+            # ChatGPT subscription entries never used the version 1 layout.
+            continue
         use_existing = False
         subentry = ConfigSubentry(
             data=entry.options,

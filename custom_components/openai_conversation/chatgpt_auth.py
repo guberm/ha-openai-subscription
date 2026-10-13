@@ -32,7 +32,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    AUTH_METHOD_API_KEY,
     AUTH_METHOD_CHATGPT,
     CONF_AUTH_METHOD,
     CONF_EARLIEST_REFRESH_AT,
@@ -71,6 +70,7 @@ PLAN_SCOPE = "chatgpt.tokens.use.direct"
 TOKEN_EXPIRY_MARGIN = timedelta(minutes=5)
 HTTP_TIMEOUT = 30
 JWKS_CACHE_TTL = timedelta(hours=1)
+JWKS_CACHE_DATA_KEY = "openai_conversation.chatgpt.jwks"
 
 STORAGE_KEY = "openai_conversation.chatgpt"
 STORAGE_VERSION = 1
@@ -157,20 +157,17 @@ SUBSCRIPTION_UNSUPPORTED_TOOL_TYPES = (
 SUBSCRIPTION_STORE = False
 SUBSCRIPTION_STREAM = True
 
+# Placeholder value the OpenAI SDK insists on; the real credential is the OAuth
+# access token attached by `ChatGPTSubscriptionClient.custom_auth`.
+PLACEHOLDER_API_KEY = "chatgpt-plan"
 
-@callback
+
 def is_chatgpt_entry(entry: ConfigEntry) -> bool:
     """Return if a config entry authenticates with a ChatGPT plan.
 
     API key entries keep the historical layout and have no auth method key.
     """
     return entry.data.get(CONF_AUTH_METHOD) == AUTH_METHOD_CHATGPT
-
-
-def auth_method(entry: ConfigEntry) -> str:
-    """Return the auth method of a config entry."""
-    method = entry.data.get(CONF_AUTH_METHOD, AUTH_METHOD_API_KEY)
-    return method if isinstance(method, str) else AUTH_METHOD_API_KEY
 
 
 @dataclass
@@ -282,7 +279,7 @@ def _create_pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def async_create_authorization_request(
+def create_authorization_request(
     *,
     client_id: str | None,
     ext_agent_host_id: str,
@@ -400,10 +397,10 @@ async def async_token_request(
     raise HomeAssistantError(f"Sign in with ChatGPT failed ({code}): {message}")
 
 
-async def async_get_jwks(hass: HomeAssistant) -> dict[str, Any]:
+async def async_get_jwks(hass: HomeAssistant, *, force: bool = False) -> dict[str, Any]:
     """Return the OpenAI JWKS, cached for a while."""
-    cache: dict[str, Any] = hass.data.setdefault("openai_conversation_chatgpt", {})
-    if (cached := cache.get("jwks")) and cached[0] > dt_util.utcnow():
+    cache: dict[str, Any] = hass.data.setdefault(JWKS_CACHE_DATA_KEY, {})
+    if not force and (cached := cache.get("jwks")) and cached[0] > dt_util.utcnow():
         return cast("dict[str, Any]", cached[1])
 
     client = get_async_client(hass)
@@ -422,6 +419,16 @@ async def async_get_jwks(hass: HomeAssistant) -> dict[str, Any]:
     return jwks
 
 
+async def _async_get_jwk_set(
+    hass: HomeAssistant, *, force: bool = False
+) -> jwt.PyJWKSet:
+    """Return the OpenAI signing keys as a JWK set."""
+    try:
+        return jwt.PyJWKSet.from_dict(await async_get_jwks(hass, force=force))
+    except jwt.PyJWTError as err:
+        raise HomeAssistantError(f"Invalid signing keys: {err}") from err
+
+
 async def async_validate_id_token(
     hass: HomeAssistant, id_token: str, *, client_id: str, nonce: str
 ) -> Mapping[str, Any]:
@@ -435,12 +442,14 @@ async def async_validate_id_token(
     except jwt.PyJWTError as err:
         raise HomeAssistantError(f"Invalid ID token: {err}") from err
 
-    try:
-        jwk_set = jwt.PyJWKSet.from_dict(await async_get_jwks(hass))
-    except jwt.PyJWTError as err:
-        raise HomeAssistantError(f"Invalid signing keys: {err}") from err
+    jwk_set = await _async_get_jwk_set(hass)
 
     key = next((key for key in jwk_set.keys if key.key_id == key_id), None)
+    if key is None:
+        # The signing keys rotate, so a key this cache does not know yet may
+        # simply be newer than our copy.
+        jwk_set = await _async_get_jwk_set(hass, force=True)
+        key = next((key for key in jwk_set.keys if key.key_id == key_id), None)
     if key is None:
         raise HomeAssistantError(f"Unknown ID token signing key: {key_id}")
 
@@ -548,6 +557,13 @@ class ChatGPTAuth:
     async def async_handle_authentication_error(self) -> None:
         """Refresh the token after the API rejected the access token."""
         async with self._lock:
+            if (
+                self.credentials.earliest_refresh_at is not None
+                and dt_util.utcnow() < self.credentials.earliest_refresh_at
+            ):
+                # The token endpoint refuses refreshes before this time, so the
+                # rejected request was not a token expiry problem.
+                return
             await self._async_refresh()
 
     async def _async_refresh(self) -> None:
@@ -620,10 +636,32 @@ class ChatGPTSubscriptionAuth(httpx2.Auth):
 class ChatGPTSubscriptionClient(openai.AsyncOpenAI):
     """OpenAI client authenticating with a ChatGPT plan subscription."""
 
-    def __init__(self, auth: ChatGPTAuth, http_client: httpx2.AsyncClient) -> None:
+    def __init__(
+        self,
+        auth: ChatGPTAuth,
+        http_client: httpx2.AsyncClient,
+        **options: Any,
+    ) -> None:
         """Initialize the client."""
         self.auth = auth
-        super().__init__(api_key=auth.async_get_access_token, http_client=http_client)
+        # A ChatGPT plan has no API key: the bearer token is attached per request
+        # by `custom_auth`, which also refreshes it. The SDK still requires a
+        # non-empty `api_key` to build a client, and it does not support a
+        # callable one (that raises inside the request).
+        options.pop("api_key", None)
+        super().__init__(
+            api_key=PLACEHOLDER_API_KEY, http_client=http_client, **options
+        )
+
+    @override
+    def with_options(self, **options: Any) -> ChatGPTSubscriptionClient:
+        """Return a copy of this client which keeps the ChatGPT plan sign in.
+
+        The base implementation copies a client with `type(self)(**options)`,
+        which would not carry the sign in of this instance.
+        """
+        options.setdefault("http_client", self._client)
+        return ChatGPTSubscriptionClient(self.auth, **options)
 
     @property
     @override
@@ -681,6 +719,15 @@ def shape_request_for_subscription(
         ):
             item["namespace"] = SUBSCRIPTION_TOOLS_NAMESPACE
 
+    # The route rejects explicit `system` input items.
+    for item in messages:
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "message"
+            and item.get("role") == "system"
+        ):
+            item["role"] = "developer"
+
     # Hosted tools which the subscription route does not provide are removed;
     # the function tools are grouped in one namespace tool.
     if tools := model_args.get("tools"):
@@ -723,10 +770,9 @@ __all__ = [
     "ChatGPTAuth",
     "ChatGPTCredentials",
     "ChatGPTSubscriptionClient",
-    "async_create_authorization_request",
     "async_get_agent_host_id",
     "async_validate_id_token",
-    "auth_method",
+    "create_authorization_request",
     "credentials_from_token",
     "is_chatgpt_entry",
     "parse_callback_url",

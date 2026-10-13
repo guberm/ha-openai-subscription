@@ -50,10 +50,12 @@ from .chatgpt_auth import (
     PLAN_SCOPE,
     RESOURCE,
     AuthorizationRequest,
-    async_create_authorization_request,
+    ChatGPTAuth,
+    ChatGPTSubscriptionClient,
     async_get_agent_host_id,
     async_token_request,
     async_validate_id_token,
+    create_authorization_request,
     credentials_from_token,
     is_chatgpt_entry,
     parse_callback_url,
@@ -74,6 +76,7 @@ from .const import (
     CONF_RECOMMENDED,
     CONF_SERVICE_TIER,
     CONF_STORE_RESPONSES,
+    CONF_SUB,
     CONF_TEMPERATURE,
     CONF_TOP_P,
     CONF_TTS_SPEED,
@@ -300,7 +303,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             return await self._async_step_chatgpt_callback(user_input, entry)
 
-        self._siwc_request = async_create_authorization_request(
+        self._siwc_request = create_authorization_request(
             # A saved client id re-authorizes a known registration; a retained
             # ID token identifies the account and skips the account selector.
             client_id=entry.data.get(CONF_CLIENT_ID) if entry else None,
@@ -381,6 +384,10 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         data = credentials.as_entry_data()
 
         if entry is not None:
+            if entry.data.get(CONF_SUB) not in (None, credentials.sub):
+                # Reauthenticating with another ChatGPT account would replace
+                # the entry while its unique id still names the old account.
+                return self._show_chatgpt_form({"base": "wrong_account"})
             if entry.update_listeners:
                 return self.async_update_and_abort(entry, data_updates=data)
             return self.async_update_reload_and_abort(entry, data_updates=data)
@@ -893,8 +900,21 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
         zone_home = self.hass.states.get(ENTITY_ID_HOME)
         if zone_home is not None:
             entry = self._get_entry()
-            # Works for both API key and ChatGPT subscription entries.
-            client = entry.runtime_data
+            # Works for both API key and ChatGPT subscription entries, also
+            # while the entry is not loaded.
+            client: openai.AsyncClient
+            if (runtime_data := getattr(entry, "runtime_data", None)) is not None:
+                client = runtime_data
+            elif is_chatgpt_entry(entry):
+                client = ChatGPTSubscriptionClient(
+                    ChatGPTAuth.from_entry(self.hass, entry),
+                    http_client=get_async_client(self.hass),
+                )
+            else:
+                client = openai.AsyncOpenAI(
+                    api_key=entry.data[CONF_API_KEY],
+                    http_client=get_async_client(self.hass),
+                )
             location_schema = probatio.Schema(
                 {
                     probatio.Optional(
