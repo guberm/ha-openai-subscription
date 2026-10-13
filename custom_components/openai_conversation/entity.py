@@ -757,6 +757,16 @@ class OpenAIBaseLLMEntity(Entity):
                     # pylint: disable-next=home-assistant-log-and-raise
                     LOGGER.error("ChatGPT plan usage rejected the request: %s", err)
                     raise HomeAssistantError(message) from err
+                if isinstance(err, openai.APIStatusError) and err.status_code >= 500:
+                    # OpenAI reports its own outages through 5xx (a Cloudflare
+                    # 520, for example), which are worth naming instead of the
+                    # generic error message.
+                    # pylint: disable-next=home-assistant-log-and-raise
+                    LOGGER.error("OpenAI is unavailable: %s", err)
+                    raise HomeAssistantError(
+                        f"OpenAI is temporarily unavailable (HTTP "
+                        f"{err.status_code}), please try again later"
+                    ) from err
                 if "Verify Organization" in str(err):
                     ir.async_create_issue(
                         self.hass,
