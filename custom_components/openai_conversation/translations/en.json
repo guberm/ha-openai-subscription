@@ -28,16 +28,6 @@
                 "description": "Enter your OpenAI API key. Instructions to obtain an API key can be found [here]({instructions_url}).",
                 "title": "API key"
             },
-            "auth_method": {
-                "data": {
-                    "auth_method": "Authentication method"
-                },
-                "data_description": {
-                    "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
-                },
-                "description": "Choose how this integration should authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
-                "title": "Authentication method"
-            },
             "chatgpt": {
                 "data": {
                     "callback_url": "URL from the browser address bar"

@@ -13,8 +13,8 @@
       "invalid_callback_url": "This does not look like the URL your browser ended up on. Copy the full address from the browser address bar.",
       "invalid_state": "The sign in could not be verified (state mismatch). Start the sign in again.",
       "registration_incomplete": "The ChatGPT registration did not complete. Start the sign in again.",
-      "unknown": "[%key:common::config_flow::error::unknown%]",
       "unexpected_error": "Something went wrong while completing the sign in. Check the Home Assistant log and start the sign in again.",
+      "unknown": "[%key:common::config_flow::error::unknown%]",
       "wrong_account": "This sign in belongs to a different ChatGPT account than the entry being reauthenticated. Sign in with the account the entry was created with."
     },
     "step": {
@@ -27,16 +27,6 @@
         },
         "description": "Enter your OpenAI API key. Instructions to obtain an API key can be found [here]({instructions_url}).",
         "title": "API key"
-      },
-      "auth_method": {
-        "data": {
-          "auth_method": "Authentication method"
-        },
-        "data_description": {
-          "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
-        },
-        "description": "Choose how this integration should authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
-        "title": "Authentication method"
       },
       "chatgpt": {
         "data": {

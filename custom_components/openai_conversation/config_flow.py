@@ -159,9 +159,6 @@ STEP_CALLBACK_DATA_SCHEMA = probatio.Schema(
     }
 )
 
-# Subentry types the ChatGPT plan usage route cannot provide.
-SPEECH_SUBENTRY_TYPES = ("stt", "tts")
-
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
     """Validate the user input allows us to connect.
@@ -219,11 +216,9 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @callback
     def _siwc_entry(self) -> ConfigEntry | None:
-        """Return the entry which is being reauthenticated or reconfigured."""
+        """Return the entry which is being reauthenticated."""
         if self.source == SOURCE_REAUTH:
             return self._get_reauth_entry()
-        if self.source == SOURCE_RECONFIGURE:
-            return self._get_reconfigure_entry()
         return None
 
     async def _async_catalog_models(self, credentials: ChatGPTCredentials) -> list[str]:
@@ -245,43 +240,29 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             return []
 
-    async def _async_catalog_default(
-        self, credentials: ChatGPTCredentials
-    ) -> str | None:
-        """Return the first model of the signed in account's catalog, if any."""
-        models = await self._async_catalog_models(credentials)
-        return models[0] if models else None
+    def _async_update_configured_entry(
+        self, data: dict[str, Any]
+    ) -> ConfigFlowResult | None:
+        """Update the entry a reauth or reconfigure flow works on.
 
-    @callback
-    def _async_remove_speech_subentries(self, entry: ConfigEntry) -> None:
-        """Remove the speech-to-text and text-to-speech subentries of an entry.
-
-        The plan usage route does not provide those APIs. A subentry which is
-        not present is simply not removed, so this is idempotent.
+        Returns None when the flow is neither a reauth nor a reconfigure flow.
         """
-        for subentry in list(entry.subentries.values()):
-            if subentry.subentry_type in SPEECH_SUBENTRY_TYPES:
-                self.hass.config_entries.async_remove_subentry(
-                    entry, subentry.subentry_id
-                )
-
-    @callback
-    def _async_bind_catalog_model(self, entry: ConfigEntry, model: str) -> None:
-        """Store a catalog model on the subentries which do not have one.
-
-        The plan usage route rejects the regular API default model, so an entry
-        which switched to the plan must not keep falling back to it.
-        """
-        for subentry in entry.subentries.values():
-            if (
-                subentry.subentry_type in ("conversation", "ai_task_data")
-                and subentry.data.get(CONF_CHAT_MODEL) is None
-            ):
-                self.hass.config_entries.async_update_subentry(
-                    entry,
-                    subentry,
-                    data={**subentry.data, CONF_CHAT_MODEL: model},
-                )
+        if self.source not in (SOURCE_REAUTH, SOURCE_RECONFIGURE):
+            return None
+        entry = (
+            self._get_reauth_entry()
+            if self.source == SOURCE_REAUTH
+            else self._get_reconfigure_entry()
+        )
+        if is_chatgpt_entry(entry):
+            # Switching a plan entry back to an API key replaces the whole data
+            # layout and drops the account scoped unique id.
+            if entry.update_listeners:
+                return self.async_update_and_abort(entry, data=data, unique_id=None)
+            return self.async_update_reload_and_abort(entry, data=data, unique_id=None)
+        if entry.update_listeners:
+            return self.async_update_and_abort(entry, data_updates=data)
+        return self.async_update_reload_and_abort(entry, data_updates=data)
 
     async def _async_step_api_key(
         self, user_input: dict[str, Any] | None, step_id: str
@@ -307,28 +288,10 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
                     _LOGGER.exception("Unexpected exception")
                     errors["base"] = "unknown"
                 else:
-                    if self.source in (SOURCE_REAUTH, SOURCE_RECONFIGURE):
-                        entry = (
-                            self._get_reauth_entry()
-                            if self.source == SOURCE_REAUTH
-                            else self._get_reconfigure_entry()
-                        )
-                        if is_chatgpt_entry(entry):
-                            # Switching a plan entry back to an API key replaces
-                            # the whole data layout and drops the account scoped
-                            # unique id.
-                            if entry.update_listeners:
-                                return self.async_update_and_abort(
-                                    entry, data=data, unique_id=None
-                                )
-                            return self.async_update_reload_and_abort(
-                                entry, data=data, unique_id=None
-                            )
-                        if entry.update_listeners:
-                            return self.async_update_and_abort(entry, data_updates=data)
-                        return self.async_update_reload_and_abort(
-                            entry, data_updates=data
-                        )
+                    if (
+                        updated := self._async_update_configured_entry(data)
+                    ) is not None:
+                        return updated
                     return self.async_create_entry(
                         title="ChatGPT",
                         data=data,
@@ -498,19 +461,6 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
             if existing is not None and existing.entry_id != entry.entry_id:
                 return self.async_abort(reason="already_configured")
 
-            if not is_chatgpt_entry(entry):
-                # Converting an API key entry to the plan: the plan usage route
-                # has no speech to text or text to speech, and it rejects the
-                # regular API default model.
-                try:
-                    model = await self._async_catalog_default(credentials)
-                except HomeAssistantError as err:
-                    _LOGGER.error("Could not list the ChatGPT plan models: %s", err)
-                    return self._show_chatgpt_form({"base": "cannot_connect"})
-                self._async_remove_speech_subentries(entry)
-                if model is not None:
-                    self._async_bind_catalog_model(entry, model)
-
             if entry.update_listeners:
                 return self.async_update_and_abort(
                     entry, unique_id=credentials.unique_id, data=data
@@ -584,10 +534,15 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]
     ) -> ConfigFlowResult:
-        """Perform reauth upon an API authentication error."""
+        """Perform reauth upon an API authentication error.
+
+        Reauthentication follows the method the entry already uses: a ChatGPT
+        plan entry signs in with ChatGPT again, an API key entry asks for a new
+        API key.
+        """
         if is_chatgpt_entry(self._get_reauth_entry()):
             return await self.async_step_chatgpt()
-        return await self.async_step_auth_method()
+        return await self.async_step_reauth_confirm()
 
     async def async_step_reauth_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -598,31 +553,8 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle reconfiguration of the API key or the ChatGPT sign in."""
-        if user_input is None:
-            return await self.async_step_auth_method()
+        """Handle reconfiguration of the API key."""
         return await self._async_step_api_key(user_input, "reconfigure")
-
-    async def async_step_auth_method(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Let the user choose the authentication method of the entry.
-
-        Reauthentication and reconfiguration offer the same choice as adding
-        the integration, so a broken API key entry can switch to the ChatGPT
-        plan sign in in place, and a plan entry back to an API key.
-        """
-        if user_input is not None:
-            if user_input.get(CONF_AUTH_METHOD) == AUTH_METHOD_CHATGPT:
-                return await self.async_step_chatgpt()
-            if self.source == SOURCE_REAUTH:
-                return await self.async_step_reauth_confirm()
-            return await self._async_step_api_key(None, "reconfigure")
-
-        return self.async_show_form(
-            step_id="auth_method",
-            data_schema=STEP_AUTH_METHOD_DATA_SCHEMA,
-        )
 
     @classmethod
     @callback
@@ -1146,7 +1078,9 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
             client: openai.AsyncClient
             if (runtime_data := getattr(entry, "runtime_data", None)) is not None:
                 client = runtime_data
-            elif is_chatgpt_entry(entry):
+            elif is_chatgpt_entry(entry):  # pragma: no cover
+                # Unreachable: a plan entry is never offered the web search
+                # user location options, which are the only caller of this.
                 client = ChatGPTSubscriptionClient(
                     ChatGPTAuth.from_entry(self.hass, entry),
                     http_client=get_async_client(self.hass),
