@@ -54,7 +54,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
     """Set up OpenAI Conversation from a config entry."""
     auth: ChatGPTAuth | None = None
     if is_chatgpt_entry(entry):
@@ -116,8 +116,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bo
         for subentry in entry.subentries.values():
             model = subentry.data.get(CONF_CHAT_MODEL)
             if models and model is not None and model not in models:
-                raise ConfigEntryNotReady(
-                    f"Model {model} is not available for this ChatGPT account"
+                # Failing setup here put the entry in SETUP_RETRY, which took
+                # every subentry offline and left the options flow unable to
+                # change the model, because it aborts while the parent entry is
+                # not loaded. The plan usage route reports an unsupported model
+                # itself, so keep the entry loaded and let the user reconfigure.
+                LOGGER.warning(
+                    "Model %s of subentry %s is not available for this ChatGPT "
+                    "account; choose one of %s",
+                    model,
+                    subentry.subentry_id,
+                    models,
                 )
     else:
         try:
@@ -131,19 +140,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bo
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    entry.async_on_unload(entry.add_update_listener(async_update_options))
 
-    return True
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
     """Unload OpenAI."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_update_options(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
-    """Update options."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
 
 
 async def async_migrate_integration(hass: HomeAssistant) -> None:
@@ -177,7 +177,7 @@ async def async_migrate_integration(hass: HomeAssistant) -> None:
             all_disabled = all(
                 e.disabled_by is not None
                 for e in entries
-                if e.data[CONF_API_KEY] == entry.data[CONF_API_KEY]
+                if e.data.get(CONF_API_KEY) == entry.data[CONF_API_KEY]
             )
             api_keys_entries[entry.data[CONF_API_KEY]] = (entry, all_disabled)
 
@@ -247,7 +247,7 @@ async def async_migrate_integration(hass: HomeAssistant) -> None:
             )
 
 
-async def async_migrate_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bool:
+async def async_migrate_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
     """Migrate entry."""
     LOGGER.debug("Migrating from version %s:%s", entry.version, entry.minor_version)
 
@@ -323,8 +323,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> 
     LOGGER.debug(
         "Migration to version %s:%s successful", entry.version, entry.minor_version
     )
-
-    return True
 
 
 def _add_ai_task_subentry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:

@@ -29,7 +29,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import AbortFlow
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import llm
 from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.selector import (
@@ -226,12 +226,16 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
 
         The catalog is only used to preselect a model. Reading it can fail
         (OpenAI returned a transient 520 while this was written), and that must
-        not fail the sign in: the default model is used instead.
+        not fail the sign in: the default model is used instead. An
+        authentication failure of the credentials is not an unreadable catalog
+        and is re-raised.
         """
         try:
             return await async_get_subscription_models_for_credentials(
                 self.hass, credentials
             )
+        except ConfigEntryAuthFailed:
+            raise
         except HomeAssistantError as err:
             _LOGGER.warning(
                 "Could not read the OpenAI model catalog, using the default "
@@ -257,11 +261,9 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         if is_chatgpt_entry(entry):
             # Switching a plan entry back to an API key replaces the whole data
             # layout and drops the account scoped unique id.
-            if entry.update_listeners:
-                return self.async_update_and_abort(entry, data=data, unique_id=None)
             return self.async_update_reload_and_abort(entry, data=data, unique_id=None)
-        if entry.update_listeners:
-            return self.async_update_and_abort(entry, data_updates=data)
+        # Nothing registers an entry update listener (the reload storm fix
+        # removed it), so the reload is explicit here.
         return self.async_update_reload_and_abort(entry, data_updates=data)
 
     async def _async_step_api_key(
@@ -364,6 +366,12 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
             except AbortFlow:
                 # The flow aborts on purpose (an entry already exists, ...).
                 raise
+            except ConfigEntryAuthFailed as err:
+                # Credentials which the account route rejected must surface as
+                # an auth failure instead of creating an entry which setup
+                # would immediately send back into reauthentication.
+                _LOGGER.error("Sign in with ChatGPT failed: %s", err)
+                return self._show_chatgpt_form({"base": "invalid_auth"})
             except Exception:
                 # A user must never be left with a bare "unknown error": log
                 # what happened and ask them to start the sign in again.
@@ -461,10 +469,6 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
             if existing is not None and existing.entry_id != entry.entry_id:
                 return self.async_abort(reason="already_configured")
 
-            if entry.update_listeners:
-                return self.async_update_and_abort(
-                    entry, unique_id=credentials.unique_id, data=data
-                )
             return self.async_update_reload_and_abort(
                 entry, unique_id=credentials.unique_id, data=data
             )
@@ -706,7 +710,7 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
                     self.hass,
                     ChatGPTAuth.from_entry(self.hass, self._get_entry()),
                 )
-                catalog_available = True
+                catalog_available = bool(catalog_models)
             except HomeAssistantError as err:
                 # The catalog could not be read, which says nothing about the
                 # model the user submits: it cannot be checked against the
@@ -714,8 +718,8 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
                 # value to be typed.
                 _LOGGER.warning("Could not read the OpenAI model catalog: %s", err)
             # The API default model is rejected by the plan usage route, so it
-            # is only used as the default when the catalog could be read or a
-            # model is already stored on the subentry.
+            # is only used as the default when the catalog could be read and
+            # held a model, or a model is already stored on the subentry.
             default = (
                 catalog_models[0]
                 if catalog_available
@@ -900,7 +904,7 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
         elif CONF_REASONING_SUMMARY in options:
             options.pop(CONF_REASONING_SUMMARY)
 
-        service_tiers = self._get_service_tiers(model)
+        service_tiers = self._get_service_tiers(model, subscription)
         if "flex" in service_tiers or "priority" in service_tiers:
             step_schema[
                 probatio.Optional(
@@ -1053,8 +1057,16 @@ class OpenAISubentryFlowHandler(ConfigSubentryFlow):
                 return options
         return []  # pragma: no cover
 
-    def _get_service_tiers(self, model: str) -> list[str]:
-        """Get service tier options based on model."""
+    def _get_service_tiers(self, model: str, subscription: bool) -> list[str]:
+        """Get the service tier options to offer for a model.
+
+        The plan usage route rejects the service tier
+        (`shape_request_for_subscription` removes it), so a ChatGPT plan entry
+        is offered none and any stored value is dropped.
+        """
+        if subscription:
+            return []
+
         service_tiers = ["auto"]
 
         if not model.startswith(tuple(UNSUPPORTED_FLEX_SERVICE_TIERS_MODELS)):

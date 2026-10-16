@@ -17,8 +17,8 @@
   "iot_class": "cloud_polling",
   "quality_scale": "bronze",
   "requirements": [
-    "chatgpt-plan-auth==1.0.1"
+    "chatgpt-plan-auth==1.0.2"
   ],
-  "version": "1.0.12",
+  "version": "1.0.13",
   "issue_tracker": "https://github.com/guberm/ha-openai-subscription/issues"
 }

@@ -721,14 +721,18 @@ class OpenAIBaseLLMEntity(Entity):
                     )
                 )
             except openai.RateLimitError as err:
-                if (
-                    is_chatgpt_entry(self.entry)
-                    and (message := subscription_error_message(err)) is not None
-                ):
+                if is_chatgpt_entry(self.entry):
                     # A ChatGPT plan usage limit is reported as HTTP 429 too.
+                    # The plan request carries no service tier
+                    # (`shape_request_for_subscription` removes it), so the flex
+                    # tier retry below does not apply and a plan 429 whose code
+                    # is unknown still has to fail with a clear message.
                     # pylint: disable-next=home-assistant-log-and-raise
                     LOGGER.error("ChatGPT plan usage rejected the request: %s", err)
-                    raise HomeAssistantError(message) from err
+                    raise HomeAssistantError(
+                        subscription_error_message(err)
+                        or "Rate limited by the ChatGPT plan, please try again later"
+                    ) from err
                 if (
                     model_args["service_tier"] == "flex"
                     and "resource unavailable" in (err.message or "").lower()
