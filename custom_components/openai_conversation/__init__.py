@@ -54,7 +54,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bool:
     """Set up OpenAI Conversation from a config entry."""
     auth: ChatGPTAuth | None = None
     if is_chatgpt_entry(entry):
@@ -139,6 +139,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> No
     entry.runtime_data = client
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Home Assistant treats a non-boolean setup result as a failed setup and
+    # disables the entry ("async_setup_entry did not return boolean").
+    return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:

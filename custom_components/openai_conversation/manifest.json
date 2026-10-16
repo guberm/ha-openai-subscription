@@ -19,6 +19,6 @@
   "requirements": [
     "chatgpt-plan-auth==1.0.2"
   ],
-  "version": "1.0.13",
+  "version": "1.0.14",
   "issue_tracker": "https://github.com/guberm/ha-openai-subscription/issues"
 }
