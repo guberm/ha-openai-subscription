@@ -7,9 +7,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, override
 
 import openai
-from openai.types.decision_create_params import Question
-from openai.types.decision_input_message_param import DecisionInputMessageParam
-from openai.types.decision_input_part_union_param import DecisionInputPartUnionParam
+try:
+    from openai.types.decision_create_params import Question
+    from openai.types.decision_input_message_param import DecisionInputMessageParam
+    from openai.types.decision_input_part_union_param import DecisionInputPartUnionParam
+
+    DECISIONS_SUPPORTED = True
+except ImportError:  # The OpenAI SDK in Home Assistant 2026.10 has no Decisions API.
+    DECISIONS_SUPPORTED = False
 from openai.types.responses.response_output_item import ImageGenerationCall
 
 from homeassistant.components import ai_task, conversation
@@ -50,6 +55,13 @@ async def async_setup_entry(
         if subentry.subentry_type == "ai_task_data":
             entity: ai_task.AITaskEntity = OpenAITaskEntity(config_entry, subentry)
         elif subentry.subentry_type == "ai_task_evaluate":
+            if not DECISIONS_SUPPORTED:
+                _LOGGER.warning(
+                    "Skipping the AI task evaluation entity %s: the OpenAI SDK "
+                    "in this Home Assistant release has no Decisions API",
+                    subentry.subentry_id,
+                )
+                continue
             entity = OpenAIEvaluationEntity(config_entry, subentry)
         else:
             continue
