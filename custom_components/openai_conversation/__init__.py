@@ -356,6 +356,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> 
         "Migration to version %s:%s successful", entry.version, entry.minor_version
     )
 
+    return True
+
 
 def _add_ai_task_subentry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
     """Add AI Task subentry to the config entry."""
