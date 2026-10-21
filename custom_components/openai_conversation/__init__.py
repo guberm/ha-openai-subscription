@@ -30,12 +30,14 @@ from .const import (
     CONF_CHAT_MODEL,
     CONF_REASONING_SUMMARY,
     DEFAULT_AI_TASK_NAME,
+    DEFAULT_EVALUATION_NAME,
     DEFAULT_NAME,
     DEFAULT_STT_NAME,
     DEFAULT_TTS_NAME,
     DOMAIN,
     LOGGER,
     RECOMMENDED_AI_TASK_OPTIONS,
+    RECOMMENDED_EVALUATION_OPTIONS,
     RECOMMENDED_REASONING_SUMMARY,
     RECOMMENDED_STT_OPTIONS,
     RECOMMENDED_TTS_OPTIONS,
@@ -54,7 +56,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
     """Set up OpenAI Conversation from a config entry."""
     auth: ChatGPTAuth | None = None
     if is_chatgpt_entry(entry):
@@ -140,14 +142,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> bo
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Home Assistant treats a non-boolean setup result as a failed setup and
-    # disables the entry ("async_setup_entry did not return boolean").
     return True
+
+    if not is_chatgpt_entry(entry):
+        # A ChatGPT entry writes rotated tokens to entry.data while running;
+        # an update listener would reload the integration from inside that
+        # request. Its API-key counterpart has no in-flight writes, so upstream
+        # keeps the reload-on-options-change behavior there.
+        entry.async_on_unload(entry.add_update_listener(async_update_options))
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
     """Unload OpenAI."""
     await hass.config_entries.async_unload_platforms_or_raise(entry, PLATFORMS)
+
+
+async def async_update_options(hass: HomeAssistant, entry: OpenAIConfigEntry) -> None:
+    """Update options."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_migrate_integration(hass: HomeAssistant) -> None:
@@ -323,6 +335,22 @@ async def async_migrate_entry(hass: HomeAssistant, entry: OpenAIConfigEntry) -> 
                         entry, subentry, data=data
                     )
         hass.config_entries.async_update_entry(entry, minor_version=7)
+
+    if entry.version == 2 and entry.minor_version == 7:
+        if not any(
+            subentry.subentry_type == "ai_task_evaluate"
+            for subentry in entry.subentries.values()
+        ):
+            hass.config_entries.async_add_subentry(
+                entry,
+                ConfigSubentry(
+                    data=MappingProxyType(RECOMMENDED_EVALUATION_OPTIONS),
+                    subentry_type="ai_task_evaluate",
+                    title=DEFAULT_EVALUATION_NAME,
+                    unique_id=None,
+                ),
+            )
+        hass.config_entries.async_update_entry(entry, minor_version=8)
 
     LOGGER.debug(
         "Migration to version %s:%s successful", entry.version, entry.minor_version

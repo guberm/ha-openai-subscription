@@ -68,13 +68,11 @@
                 "title": "API key"
             },
             "user": {
-                "data": {
-                    "auth_method": "Authentication method"
-                },
-                "data_description": {
-                    "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
-                },
                 "description": "Choose how to authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
+                "menu_options": {
+                    "api_key": "Sign in with an API key",
+                    "chatgpt": "Sign in with ChatGPT (ChatGPT plan)"
+                },
                 "title": "Authentication method"
             }
         }
@@ -267,12 +265,6 @@
         }
     },
     "selector": {
-        "auth_method": {
-            "options": {
-                "api_key": "API key",
-                "chatgpt": "Sign in with ChatGPT (ChatGPT plan)"
-            }
-        },
         "reasoning_effort": {
             "options": {
                 "high": "High",

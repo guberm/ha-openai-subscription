@@ -69,12 +69,16 @@
       },
       "user": {
         "data": {
-          "auth_method": "Authentication method"
+          "api_key": "[%key:common::config_flow::data::api_key%]"
         },
         "data_description": {
-          "auth_method": "Use an OpenAI API key, or sign in with ChatGPT."
+          "api_key": "Your OpenAI API key."
         },
         "description": "Choose how to authenticate. The ChatGPT option uses an eligible ChatGPT plan instead of API billing and does not include speech-to-text or text-to-speech.",
+        "menu_options": {
+          "api_key": "Sign in with an API key",
+          "chatgpt": "Sign in with ChatGPT (ChatGPT plan)"
+        },
         "title": "Authentication method"
       }
     }
@@ -141,6 +145,25 @@
             "web_search": "[%key:component::openai_conversation::config_subentries::conversation::step::model::data_description::web_search%]"
           },
           "title": "[%key:component::openai_conversation::config_subentries::conversation::step::model::title%]"
+        }
+      }
+    },
+    "ai_task_evaluate": {
+      "abort": {
+        "entry_not_loaded": "[%key:component::openai_conversation::config_subentries::conversation::abort::entry_not_loaded%]"
+      },
+      "entry_type": "AI task evaluation",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure AI task evaluation",
+        "user": "Add AI task evaluation"
+      },
+      "step": {
+        "init": {
+          "data": {
+            "chat_model": "Model",
+            "name": "Name"
+          },
+          "title": "Configure evaluation"
         }
       }
     },
@@ -267,12 +290,6 @@
     }
   },
   "selector": {
-    "auth_method": {
-      "options": {
-        "api_key": "API key",
-        "chatgpt": "Sign in with ChatGPT (ChatGPT plan)"
-      }
-    },
     "reasoning_effort": {
       "options": {
         "high": "[%key:common::state::high%]",

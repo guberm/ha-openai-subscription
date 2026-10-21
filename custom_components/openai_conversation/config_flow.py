@@ -66,9 +66,6 @@ from .chatgpt_auth import (
     subscription_model_options,
 )
 from .const import (
-    AUTH_METHOD_API_KEY,
-    AUTH_METHOD_CHATGPT,
-    CONF_AUTH_METHOD,
     CONF_CALLBACK_URL,
     CONF_CHAT_MODEL,
     CONF_CODE_INTERPRETER,
@@ -96,6 +93,7 @@ from .const import (
     CONF_WEB_SEARCH_USER_LOCATION,
     DEFAULT_AI_TASK_NAME,
     DEFAULT_CONVERSATION_NAME,
+    DEFAULT_EVALUATION_NAME,
     DEFAULT_STT_NAME,
     DEFAULT_STT_PROMPT,
     DEFAULT_TTS_NAME,
@@ -104,6 +102,8 @@ from .const import (
     RECOMMENDED_CHAT_MODEL,
     RECOMMENDED_CODE_INTERPRETER,
     RECOMMENDED_CONVERSATION_OPTIONS,
+    RECOMMENDED_DECISION_MODEL,
+    RECOMMENDED_EVALUATION_OPTIONS,
     RECOMMENDED_IMAGE_MODEL,
     RECOMMENDED_MAX_TOKENS,
     RECOMMENDED_PRO_MODE,
@@ -140,19 +140,6 @@ STEP_API_KEY_DATA_SCHEMA = probatio.Schema(
         probatio.Required(probatio.Secret(CONF_API_KEY)): str,
     }
 )
-STEP_AUTH_METHOD_DATA_SCHEMA = probatio.Schema(
-    {
-        probatio.Required(
-            CONF_AUTH_METHOD, default=AUTH_METHOD_API_KEY
-        ): SelectSelector(
-            SelectSelectorConfig(
-                options=[AUTH_METHOD_API_KEY, AUTH_METHOD_CHATGPT],
-                translation_key=CONF_AUTH_METHOD,
-                mode=SelectSelectorMode.DROPDOWN,
-            )
-        ),
-    }
-)
 STEP_CALLBACK_DATA_SCHEMA = probatio.Schema(
     {
         probatio.Required(CONF_CALLBACK_URL): str,
@@ -163,8 +150,7 @@ STEP_CALLBACK_DATA_SCHEMA = probatio.Schema(
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
     """Validate the user input allows us to connect.
 
-    Data has the keys from STEP_API_KEY_DATA_SCHEMA with values provided by the
-    user.
+    Data has the keys from STEP_API_KEY_DATA_SCHEMA with values provided by the user.
     """
     client = openai.AsyncOpenAI(
         api_key=data[CONF_API_KEY],
@@ -177,7 +163,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for OpenAI Conversation."""
 
     VERSION = 2
-    MINOR_VERSION = 7
+    MINOR_VERSION = 8
 
     # Pending Sign in with ChatGPT authorization attempt.
     _siwc_request: AuthorizationRequest
@@ -192,21 +178,13 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle the initial step.
+        """Handle the initial step: pick the authentication method.
 
-        The authentication method and the credential are asked in separate
-        steps: a Home Assistant form step cannot hide a field conditionally, so
-        the API key field must not sit in the form that also shows the method.
+        A form step cannot hide a field conditionally, so the API key field
+        must not sit in the form that also shows the method; the menu sends the
+        user straight to the chosen method's own step.
         """
-        if user_input is None:
-            return self.async_show_form(
-                step_id="user",
-                data_schema=STEP_AUTH_METHOD_DATA_SCHEMA,
-                errors={},
-            )
-        if user_input.get(CONF_AUTH_METHOD) == AUTH_METHOD_CHATGPT:
-            return await self.async_step_chatgpt()
-        return await self.async_step_api_key()
+        return self.async_show_menu(step_id="user", menu_options=["api_key", "chatgpt"])
 
     async def async_step_api_key(
         self, user_input: dict[str, Any] | None = None
@@ -262,8 +240,8 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
             # Switching a plan entry back to an API key replaces the whole data
             # layout and drops the account scoped unique id.
             return self.async_update_reload_and_abort(entry, data=data, unique_id=None)
-        # Nothing registers an entry update listener (the reload storm fix
-        # removed it), so the reload is explicit here.
+        if entry.update_listeners:
+            return self.async_update_and_abort(entry, data_updates=data)
         return self.async_update_reload_and_abort(entry, data_updates=data)
 
     async def _async_step_api_key(
@@ -308,6 +286,12 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
                                 "subentry_type": "ai_task_data",
                                 "data": RECOMMENDED_AI_TASK_OPTIONS,
                                 "title": DEFAULT_AI_TASK_NAME,
+                                "unique_id": None,
+                            },
+                            {
+                                "subentry_type": "ai_task_evaluate",
+                                "data": RECOMMENDED_EVALUATION_OPTIONS,
+                                "title": DEFAULT_EVALUATION_NAME,
                                 "unique_id": None,
                             },
                             {
@@ -518,6 +502,15 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
                         "title": DEFAULT_AI_TASK_NAME,
                         "unique_id": None,
                     },
+                    {
+                        "subentry_type": "ai_task_evaluate",
+                        "data": {
+                            **RECOMMENDED_EVALUATION_OPTIONS,
+                            CONF_CHAT_MODEL: model,
+                        },
+                        "title": DEFAULT_EVALUATION_NAME,
+                        "unique_id": None,
+                    },
                 ],
             )
 
@@ -570,6 +563,7 @@ class OpenAIConfigFlow(ConfigFlow, domain=DOMAIN):
         subentry_types: dict[str, type[ConfigSubentryFlow]] = {
             "conversation": OpenAISubentryFlowHandler,
             "ai_task_data": OpenAISubentryFlowHandler,
+            "ai_task_evaluate": OpenAISubentryEvaluationFlowHandler,
         }
         if not is_chatgpt_entry(config_entry):
             # ChatGPT plan usage does not support speech to text or text to
@@ -1313,4 +1307,65 @@ class OpenAISubentryTTSFlowHandler(ConfigSubentryFlow):
                 probatio.Schema(step_schema), options
             ),
             errors=errors,
+        )
+
+
+class OpenAISubentryEvaluationFlowHandler(ConfigSubentryFlow):
+    """Configure an OpenAI evaluation entity."""
+
+    options: dict[str, Any]
+
+    @property
+    def _is_new(self) -> bool:
+        """Return if this is a new subentry."""
+        return self.source == "user"
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Add an evaluation task entity."""
+        self.options = {CONF_CHAT_MODEL: RECOMMENDED_DECISION_MODEL}
+        return await self.async_step_init()
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Reconfigure an evaluation task entity."""
+        self.options = self._get_reconfigure_subentry().data.copy()
+        return await self.async_step_init()
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Configure the decision model."""
+        if self._get_entry().state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="entry_not_loaded")
+
+        if user_input is not None:
+            self.options.update(user_input)
+            if self._is_new:
+                return self.async_create_entry(
+                    title=self.options.pop(CONF_NAME), data=self.options
+                )
+            return self.async_update_and_abort(
+                self._get_entry(),
+                self._get_reconfigure_subentry(),
+                data=self.options,
+            )
+
+        schema: VolDictType = {}
+        if self._is_new:
+            schema[probatio.Required(CONF_NAME, default=DEFAULT_EVALUATION_NAME)] = str
+        schema[probatio.Required(CONF_CHAT_MODEL)] = SelectSelector(
+            SelectSelectorConfig(
+                options=[RECOMMENDED_DECISION_MODEL],
+                mode=SelectSelectorMode.DROPDOWN,
+                custom_value=True,
+            )
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                probatio.Schema(schema), self.options
+            ),
         )

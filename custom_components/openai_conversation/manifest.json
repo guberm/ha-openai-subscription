@@ -5,6 +5,10 @@
     "assist_pipeline",
     "intent"
   ],
+  "categories": [
+    "ai_voice.ai_models",
+    "ai_voice.speech"
+  ],
   "codeowners": [
     "@Shulyaka"
   ],
@@ -19,6 +23,6 @@
   "requirements": [
     "chatgpt-plan-auth==1.0.2"
   ],
-  "version": "1.0.14",
+  "version": "1.0.15",
   "issue_tracker": "https://github.com/guberm/ha-openai-subscription/issues"
 }
